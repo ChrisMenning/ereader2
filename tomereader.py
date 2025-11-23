@@ -140,11 +140,8 @@ def main():
                         print(f"[MODAL] Bookmark placed at chapter {reader_controller.current_chapter_index}, page {reader_controller.current_page}")
                     elif option == "Go to Bookmark" and bookmark_service.has_bookmark():
                         chapter_idx, page_idx = bookmark_service.get_bookmark()
-                        items = [item for item in reader_controller.book.get_items_of_type(ITEM_DOCUMENT)]
-                        chapter_item = items[chapter_idx]
-                        text = chapter_item.get_content().decode("utf-8", errors="ignore")
-                        reader_controller.pages = reader_controller.paginate_html(text)
                         reader_controller.current_chapter_index = chapter_idx
+                        reader_controller.load_chapter(chapter_idx)
                         reader_controller.current_page = page_idx
                         reader_controller.show_page()
                         print(f"[MODAL] Jumped to bookmark at chapter {chapter_idx}, page {page_idx}")
@@ -215,3 +212,16 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# When opening a chapter after TOC selection or navigation, use load_chapter:
+# Example for jumping to chapter (update your jump_to_chapter logic):
+def jump_to_chapter(self, href):
+    items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+    for idx, item in enumerate(items):
+        if item.get_name().endswith(href):
+            self.current_chapter_index = idx
+            self.load_chapter(idx)
+            self.current_page = 0
+            print(f"[DEBUG] Jumped to chapter: {href}, total pages: {len(self.pages)}")
+            self.show_page()
+            break

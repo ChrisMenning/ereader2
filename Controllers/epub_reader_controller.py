@@ -16,7 +16,9 @@ class EpubReaderController:
         self.toc = []
         self.toc_selected_index = 0
         self.pages = []
-        self.current_chapter_index = 0  # Track the current chapter index
+        self.current_chapter_index = 0
+        self.chapter_cache = {}
+        # REMOVE total book pages calculation for performance
 
     def _extract_pages(self):
         pages = []
@@ -164,7 +166,37 @@ class EpubReaderController:
     def show_page(self):
         if self.pages and 0 <= self.current_page < len(self.pages):
             print(f"[DEBUG] Showing page {self.current_page + 1} of {len(self.pages)}")
-            self.view.display_page(self.pages[self.current_page])
+            # Get book title robustly
+            book_title = ""
+            dc_meta = self.book.metadata.get("DC", {})
+            if "title" in dc_meta and dc_meta["title"]:
+                book_title = dc_meta["title"][0]
+            elif hasattr(self.book, "title"):
+                book_title = self.book.title
+            # Try to get chapter title from the current chapter's item
+            items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+            chapter_title = ""
+            if 0 <= self.current_chapter_index < len(items):
+                soup = BeautifulSoup(items[self.current_chapter_index].get_content(), "html.parser")
+                h1 = soup.find("h1")
+                h2 = soup.find("h2")
+                if h1 and h1.text.strip():
+                    chapter_title = h1.text.strip()
+                elif h2 and h2.text.strip():
+                    chapter_title = h2.text.strip()
+                else:
+                    section = soup.find("section")
+                    if section and section.get("title"):
+                        chapter_title = section.get("title")
+            # DO NOT calculate total book pages here
+            self.view.display_page(
+                self.pages[self.current_page],
+                book_title=book_title,
+                chapter_title=chapter_title,
+                page_num=self.current_page,
+                total_pages=len(self.pages),
+                book_total_pages=None  # Pass None, disables book page count in footer
+            )
 
     def next_page(self):
         if self.pages and self.current_page < len(self.pages) - 1:
@@ -291,3 +323,14 @@ class EpubReaderController:
                 print(f"[DEBUG] Jumped to chapter: {href}, total pages: {len(self.pages)}")
                 self.show_page()
                 break
+
+    def load_chapter(self, chapter_index):
+        if chapter_index in self.chapter_cache:
+            self.pages = self.chapter_cache[chapter_index]
+        else:
+            items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+            chapter_item = items[chapter_index]
+            text = chapter_item.get_content().decode("utf-8", errors="ignore")
+            pages = self.paginate_html(text)
+            self.chapter_cache[chapter_index] = pages
+            self.pages = pages
