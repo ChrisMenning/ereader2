@@ -8,6 +8,8 @@ from ebooklib import epub
 from Configs.rotary_encoder_input import CLK, DT, SW, GPIO, setup_encoder
 from Configs.epaper_display_output import EPaperDisplay
 from Views.library_view import LibraryView
+from Controllers.epub_reader_controller import EpubReaderController
+from Views.epub_reader_view import EpubReaderView
 
 sys.path.append('/home/mcmudgeon/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
@@ -99,8 +101,10 @@ def main():
 
     ebooks = get_ebooks_list()
     selected_index = 0
-    prev_selected_index = None
     last_clk_state = GPIO.input(CLK)
+    last_sw_state = GPIO.input(SW)
+    in_reader = False
+    in_toc = False
 
     def render_library_view():
         library_view.display_library(ebooks, selected_index)
@@ -111,17 +115,39 @@ def main():
         while True:
             clk_state = GPIO.input(CLK)
             dt_state = GPIO.input(DT)
+            sw_state = GPIO.input(SW)
 
-            if clk_state != last_clk_state:
-                prev_selected_index = selected_index
-                if dt_state != clk_state:
-                    selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
-                else:
-                    selected_index = (selected_index - 1) % len(ebooks) if ebooks else 0
-
-                library_view.display_library(ebooks, selected_index)
+            if not in_reader:
+                # Navigation
+                if clk_state != last_clk_state:
+                    if dt_state != clk_state:
+                        selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
+                    else:
+                        selected_index = (selected_index - 1) % len(ebooks) if ebooks else 0
+                    library_view.display_library(ebooks, selected_index)
+                # Button press to open reader
+                if sw_state == 0 and last_sw_state == 1:  # Button pressed
+                    book_path = ebooks[selected_index]["path"]
+                    reader_controller = EpubReaderController(display, book_path)
+                    reader_controller.show_toc()
+                    in_reader = True
+                    in_toc = True
+            elif in_toc:
+                # TOC navigation
+                if clk_state != last_clk_state:
+                    if dt_state != clk_state:
+                        reader_controller.toc_next()
+                    else:
+                        reader_controller.toc_prev()
+                if sw_state == 0 and last_sw_state == 1:
+                    reader_controller.toc_select()
+                    in_toc = False  # Exit TOC mode after selection
+            else:
+                # Reader navigation (add next/prev page logic here)
+                pass
 
             last_clk_state = clk_state
+            last_sw_state = sw_state
             time.sleep(0.01)
 
     except KeyboardInterrupt:
