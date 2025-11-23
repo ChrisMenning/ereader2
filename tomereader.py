@@ -117,38 +117,38 @@ def main():
             dt_state = GPIO.input(DT)
             sw_state = GPIO.input(SW)
 
-            if not in_reader:
-                # Navigation
-                if clk_state != last_clk_state:
-                    if dt_state != clk_state:
-                        selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
-                    else:
+            # Only act on falling edge of CLK
+            if clk_state == 0 and last_clk_state == 1:
+                if dt_state == 1:
+                    print("[ENCODER] Turned clockwise (Up/Back)")
+                    if not in_reader:
                         selected_index = (selected_index - 1) % len(ebooks) if ebooks else 0
-                    library_view.display_library(ebooks, selected_index)
-                # Button press to open reader
-                if sw_state == 0 and last_sw_state == 1:  # Button pressed
-                    print("Opening book:", ebooks[selected_index]["title"])
-                    book_path = ebooks[selected_index]["path"]
-                    reader_controller = EpubReaderController(display, book_path)
-                    reader_controller.show_toc()
-                    in_reader = True
-                    in_toc = True
-            elif in_toc:
-                # TOC navigation
-                if clk_state != last_clk_state:
-                    if dt_state != clk_state:
-                        reader_controller.toc_next()
-                    else:
+                        library_view.display_library(ebooks, selected_index)
+                    elif in_toc:
                         reader_controller.toc_prev()
-                if sw_state == 0 and last_sw_state == 1:
-                    reader_controller.toc_select()
-                    in_toc = False  # Exit TOC mode after selection
-            elif in_reader and not in_toc:
-                if clk_state != last_clk_state:
-                    if dt_state != clk_state:
-                        reader_controller.next_page()
                     else:
                         reader_controller.prev_page()
+                else:
+                    print("[ENCODER] Turned counter-clockwise (Down/Next)")
+                    if not in_reader:
+                        selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
+                        library_view.display_library(ebooks, selected_index)
+                    elif in_toc:
+                        reader_controller.toc_next()
+                    else:
+                        reader_controller.next_page()
+
+            # Button press to open reader
+            if not in_reader and sw_state == 0 and last_sw_state == 1:
+                print("Opening book:", ebooks[selected_index]["title"])
+                book_path = ebooks[selected_index]["path"]
+                reader_controller = EpubReaderController(display, book_path)
+                reader_controller.show_toc()
+                in_reader = True
+                in_toc = True
+            elif in_toc and sw_state == 0 and last_sw_state == 1:
+                reader_controller.toc_select()
+                in_toc = False  # Exit TOC mode after selection
 
             last_clk_state = clk_state
             last_sw_state = sw_state
