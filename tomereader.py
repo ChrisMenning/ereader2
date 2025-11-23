@@ -143,9 +143,12 @@ def main():
                 if sw_state == 0 and last_sw_state == 1:
                     reader_controller.toc_select()
                     in_toc = False  # Exit TOC mode after selection
-            else:
-                # Reader navigation (add next/prev page logic here)
-                pass
+            elif in_reader and not in_toc:
+                if clk_state != last_clk_state:
+                    if dt_state != clk_state:
+                        reader_controller.next_page()
+                    else:
+                        reader_controller.prev_page()
 
             last_clk_state = clk_state
             last_sw_state = sw_state

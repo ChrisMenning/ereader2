@@ -1,7 +1,11 @@
 from ebooklib import epub, ITEM_DOCUMENT
 from PIL import Image, ImageDraw, ImageFont
 from Views.epub_reader_view import EpubReaderView
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
+
+BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "div", "table")
+INLINE_BOLD = ("strong", "b")
+INLINE_ITALIC = ("em", "i")
 
 class EpubReaderController:
     def __init__(self, display, book_path):
@@ -11,89 +15,209 @@ class EpubReaderController:
         self.current_page = 0
         self.toc = []
         self.toc_selected_index = 0
-        # Do NOT call self._extract_pages() here
+        self.pages = []
+        self.current_chapter_index = 0  # Track the current chapter index
 
     def _extract_pages(self):
-        # Simple text extraction, one page per item
         pages = []
         for item in self.book.get_items_of_type(ITEM_DOCUMENT):
             text = item.get_content().decode("utf-8", errors="ignore")
-            img = self._render_text_to_image(text)
-            pages.append(img)
+            imgs = self.paginate_html(text)
+            pages.extend(imgs)
         return pages if pages else [self._render_text_to_image("No content")]
 
     def _render_text_to_image(self, html):
+        # This is now only used for fallback
         img = Image.new("1", (self.display.width, self.display.height), 255)
         draw = ImageDraw.Draw(img)
-        soup = BeautifulSoup(html, "html.parser")
+        draw.text((20, 20), html, font=self.display.font_title, fill=0)
+        return img
 
+    def paginate_html(self, html):
+        soup = BeautifulSoup(html, "html.parser")
         font_normal = self.display.font_title
         font_heading = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
         font_subheading = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+        try:
+            font_blockquote = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf", 16)
+        except OSError:
+            font_blockquote = font_normal  # fallback if font not found
+        font_table = font_normal
 
-        x, y = 20, 20
+        x_margin = 20
+        y_margin = 20
         line_spacing = 8
+        max_width = self.display.width - 2 * x_margin
+        max_height = self.display.height - 2 * y_margin
 
-        for elem in soup.body.find_all(["h1", "h2", "h3", "p"], recursive=True):
-            text = elem.get_text()
-            if elem.name == "h1":
-                draw.text((x, y), text, font=font_heading, fill=0)
-                bbox = draw.textbbox((x, y), text, font=font_heading)
+        blocks = soup.find_all(BLOCK_TAGS)
+        filtered = []
+        for b in blocks:
+            if any((ancestor.name in BLOCK_TAGS) for ancestor in b.parents if isinstance(ancestor, Tag)):
+                parent = b.find_parent(BLOCK_TAGS)
+                if parent and parent is not b and parent.name != "body":
+                    continue
+            filtered.append(b)
+        if not filtered:
+            body = soup.body or soup
+            for child in body.children:
+                if isinstance(child, Tag):
+                    filtered.append(child)
+
+        # Pagination logic
+        pages = []
+        lines = []
+        y = y_margin
+
+        def flush_page():
+            nonlocal lines, y
+            img = Image.new("1", (self.display.width, self.display.height), 255)
+            draw = ImageDraw.Draw(img)
+            for line in lines:
+                txt, font, x, y_pos = line
+                draw.text((x, y_pos), txt, font=font, fill=0)
+            pages.append(img)
+            lines = []
+            y = y_margin
+
+        for blk in filtered:
+            block_text = blk.get_text(separator=" ", strip=True)
+            if not block_text:
+                continue
+
+            # Headings
+            if blk.name == "h1":
+                font = font_heading
+                txt = block_text
+                bbox = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), txt, font=font)
                 h = bbox[3] - bbox[1]
+                if y + h > max_height and lines:
+                    flush_page()
+                lines.append((txt, font, x_margin, y))
                 y += h + line_spacing * 2
-            elif elem.name == "h2":
-                draw.text((x, y), text, font=font_subheading, fill=0)
-                bbox = draw.textbbox((x, y), text, font=font_subheading)
+
+            elif blk.name in ["h2", "h3"]:
+                font = font_subheading
+                txt = block_text
+                bbox = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), txt, font=font)
                 h = bbox[3] - bbox[1]
+                if y + h > max_height and lines:
+                    flush_page()
+                lines.append((txt, font, x_margin, y))
                 y += h + line_spacing * 2
-            elif elem.name == "h3":
-                draw.text((x, y), text, font=font_subheading, fill=0)
-                bbox = draw.textbbox((x, y), text, font=font_subheading)
+
+            elif blk.name == "blockquote":
+                font = font_blockquote
+                txt = block_text
+                bbox = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), txt, font=font)
                 h = bbox[3] - bbox[1]
-                y += h + line_spacing
-            elif elem.name == "p":
-                max_width = self.display.width - 40
-                lines = []
-                words = text.split()
+                if y + h > max_height and lines:
+                    flush_page()
+                lines.append((txt, font, x_margin + 30, y))
+                y += h + line_spacing * 2
+
+            elif blk.name == "table":
+                # Render table rows as lines
+                for tr in blk.find_all("tr"):
+                    row_text = " | ".join(td.get_text(separator=" ", strip=True) for td in tr.find_all("td"))
+                    bbox = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), row_text, font=font_table)
+                    h = bbox[3] - bbox[1]
+                    if y + h > max_height and lines:
+                        flush_page()
+                    lines.append((row_text, font_table, x_margin + 10, y))
+                    y += h + line_spacing
+                y += line_spacing
+
+            else:
+                # Paragraphs and other blocks, with word wrapping
+                font = font_normal
+                words = block_text.split()
                 line = ""
                 for word in words:
                     test_line = line + " " + word if line else word
-                    bbox = draw.textbbox((x, y), test_line, font=font_normal)
+                    bbox = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), test_line, font=font)
                     w = bbox[2] - bbox[0]
-                    if w > max_width:
-                        lines.append(line)
+                    if w > max_width and line:
+                        bbox_line = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), line, font=font)
+                        h_line = bbox_line[3] - bbox_line[1]
+                        if y + h_line > max_height and lines:
+                            flush_page()
+                        lines.append((line, font, x_margin, y))
+                        y += h_line + line_spacing
                         line = word
                     else:
                         line = test_line
                 if line:
-                    lines.append(line)
-                for l in lines:
-                    draw.text((x, y), l, font=font_normal, fill=0)
-                    bbox = draw.textbbox((x, y), l, font=font_normal)
-                    h = bbox[3] - bbox[1]
-                    y += h + line_spacing
+                    bbox_line = ImageDraw.Draw(Image.new("1", (1, 1))).textbbox((0, 0), line, font=font)
+                    h_line = bbox_line[3] - bbox_line[1]
+                    if y + h_line > max_height and lines:
+                        flush_page()
+                    lines.append((line, font, x_margin, y))
+                    y += h_line + line_spacing
                 y += line_spacing
 
-            if y > self.display.height - 40:
-                break
+        if lines:
+            flush_page()
 
-        return img
+        return pages
 
     def show_page(self):
-        self.view.display_page(self.pages[self.current_page])
+        if self.pages and 0 <= self.current_page < len(self.pages):
+            print(f"[DEBUG] Showing page {self.current_page + 1} of {len(self.pages)}")
+            self.view.display_page(self.pages[self.current_page])
 
     def next_page(self):
-        if self.current_page < len(self.pages) - 1:
+        if self.pages and self.current_page < len(self.pages) - 1:
             self.current_page += 1
+            print(f"[DEBUG] Advancing to next page: {self.current_page + 1}")
             self.show_page()
+        else:
+            # At last page of chapter, try to advance to next chapter
+            next_chapter = self._find_next_chapter()
+            if next_chapter:
+                print("[DEBUG] At end of chapter, advancing to next chapter.")
+                text = next_chapter.get_content().decode("utf-8", errors="ignore")
+                self.pages = self.paginate_html(text)
+                self.current_page = 0
+                self.show_page()
+            else:
+                print("[DEBUG] Already at last page and last chapter.")
 
     def prev_page(self):
-        if self.current_page > 0:
+        if self.pages and self.current_page > 0:
             self.current_page -= 1
+            print(f"[DEBUG] Returning to previous page: {self.current_page + 1}")
             self.show_page()
+        else:
+            # At first page of chapter, try to go to previous chapter
+            prev_chapter = self._find_prev_chapter()
+            if prev_chapter:
+                print("[DEBUG] At first page, returning to previous chapter.")
+                text = prev_chapter.get_content().decode("utf-8", errors="ignore")
+                self.pages = self.paginate_html(text)
+                self.current_page = len(self.pages) - 1
+                self.show_page()
+            else:
+                print("[DEBUG] Already at first page and first chapter.")
+
+    def _find_next_chapter(self):
+        print(f"[DEBUG] Finding next chapter from index {self.current_chapter_index}")
+        items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+        if self.current_chapter_index + 1 < len(items):
+            self.current_chapter_index += 1
+            return items[self.current_chapter_index]
+        return None
+
+    def _find_prev_chapter(self):
+        print(f"[DEBUG] Finding previous chapter from index {self.current_chapter_index}")
+        items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+        if self.current_chapter_index > 0:
+            self.current_chapter_index -= 1
+            return items[self.current_chapter_index]
+        return None
 
     def _find_toc_item(self):
-        # Find the item containing the TOC (usually named 'toc' or 'index')
+        print(f"[DEBUG] Finding TOC item")
         for item in self.book.get_items_of_type(ITEM_DOCUMENT):
             if "toc" in item.get_name().lower() or "index" in item.get_name().lower():
                 return item
@@ -122,7 +246,6 @@ class EpubReaderController:
         y = 10
         for i, entry in enumerate(self.toc):
             selected = (i == self.toc_selected_index)
-            # Draw radio button
             radio_x = 20
             radio_y = y + 12
             radio_radius = 10
@@ -137,7 +260,6 @@ class EpubReaderController:
                      (radio_x + radio_radius//2, radio_y + radio_radius//2)],
                     fill=0
                 )
-            # Draw title
             self.display.draw.text((radio_x + 2 * radio_radius + 8, y), entry["title"], fill=0)
             y += 32
         self.display.update_display()
@@ -145,11 +267,13 @@ class EpubReaderController:
     def toc_next(self):
         if self.toc_selected_index < len(self.toc) - 1:
             self.toc_selected_index += 1
+            print(f"[DEBUG] TOC selection moved to {self.toc_selected_index}")
             self._render_toc()
 
     def toc_prev(self):
         if self.toc_selected_index > 0:
             self.toc_selected_index -= 1
+            print(f"[DEBUG] TOC selection moved to {self.toc_selected_index}")
             self._render_toc()
 
     def toc_select(self):
@@ -157,11 +281,13 @@ class EpubReaderController:
         self.jump_to_chapter(href)
 
     def jump_to_chapter(self, href):
-        # Find the item by href and render it
-        for item in self.book.get_items_of_type(ITEM_DOCUMENT):
+        items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+        for idx, item in enumerate(items):
             if item.get_name().endswith(href):
                 text = item.get_content().decode("utf-8", errors="ignore")
-                img = self._render_text_to_image(text)
-                self.view.display_page(img)
-                self.current_page = None  # Not in paged mode
+                self.pages = self.paginate_html(text)
+                self.current_page = 0
+                self.current_chapter_index = idx  # Set the current chapter index
+                print(f"[DEBUG] Jumped to chapter: {href}, total pages: {len(self.pages)}")
+                self.show_page()
                 break
