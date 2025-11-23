@@ -12,6 +12,8 @@ from Controllers.epub_reader_controller import EpubReaderController
 from Views.epub_reader_view import EpubReaderView
 from Views.reader_modal_view import ReaderModalView
 from Services.bookmark_service import BookmarkService
+from Controllers.cbz_reader_controller import CBZReaderController
+from Views.cbz_reader_view import CBZReaderView
 
 sys.path.append('/home/mcmudgeon/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
@@ -43,56 +45,51 @@ def extract_cover(book):
 
 
 def get_ebooks_list():
-    """
-    Returns list of dicts:
-    {
-        "filename": str,
-        "path": str,
-        "title": str,
-        "thumbnail": PIL.Image
-    }
-    """
     books = []
-
     for filename in os.listdir(EBOOKS_DIR):
         full = os.path.join(EBOOKS_DIR, filename)
-
         if not os.path.isfile(full):
             continue
-        if not filename.lower().endswith(".epub"):
+        ext = filename.lower().split('.')[-1]
+        if ext not in ("epub", "cbz"):
             continue
 
-        try:
-            book = epub.read_epub(full)
-        except:
-            # Skip damaged or unsupported EPUBs
-            continue
-
-        # Title from metadata
-        title = None
-        if "title" in book.metadata.get("DC", {}):
-            title = book.metadata["DC"]["title"][0]
-        if not title:
-            title = os.path.splitext(filename)[0]
-
-        # Cover image
-        cover = extract_cover(book)
-        if cover:
+        title = os.path.splitext(filename)[0]
+        # Cover image for EPUB
+        cover = None
+        if ext == "epub":
             try:
-                cover = cover.resize((THUMB_SIZE, THUMB_SIZE)).convert("1")
+                book = epub.read_epub(full)
+                if "title" in book.metadata.get("DC", {}):
+                    title = book.metadata["DC"]["title"][0]
+                cover = extract_cover(book)
+                if cover:
+                    cover = cover.resize((THUMB_SIZE, THUMB_SIZE)).convert("1")
             except:
-                cover = Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255)
-        else:
-            # White placeholder
+                cover = None
+        # Cover image for CBZ (first image in archive)
+        elif ext == "cbz":
+            try:
+                import zipfile
+                with zipfile.ZipFile(full, 'r') as archive:
+                    image_files = sorted([f for f in archive.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif'))])
+                    if image_files:
+                        with archive.open(image_files[0]) as file:
+                            img = Image.open(file).convert("L")
+                            img = img.resize((THUMB_SIZE, THUMB_SIZE))
+                            cover = img.point(lambda x: 0 if x < 128 else 255, '1')
+            except:
+                cover = None
+        if not cover:
             cover = Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255)
 
         books.append({
             "filename": filename,
             "path": full,
             "title": title,
-            "thumbnail": cover
+            "thumbnail": cover,
+            "type": ext
         })
-
     return books
 
 
@@ -182,17 +179,23 @@ def main():
 
             # Button press to open reader or modal
             if not in_reader and sw_state == 0 and last_sw_state == 1:
-                print("Opening book:", ebooks[selected_index]["title"])
-                book_path = ebooks[selected_index]["path"]
-                reader_controller = EpubReaderController(display, book_path)
-                reader_controller.show_toc()
-                in_reader = True
-                in_toc = True
+                selected_book = ebooks[selected_index]
+                print("Opening book:", selected_book["title"])
+                book_path = selected_book["path"]
+                if selected_book["type"] == "epub":
+                    reader_controller = EpubReaderController(display, book_path)
+                    reader_controller.show_toc()
+                    in_reader = True
+                    in_toc = True
+                elif selected_book["type"] == "cbz":
+                    reader_controller = CBZReaderController(display, book_path)
+                    reader_controller.show_page()
+                    in_reader = True
+                    in_toc = False
             elif in_toc and sw_state == 0 and last_sw_state == 1:
                 reader_controller.toc_select()
                 in_toc = False  # Exit TOC mode after selection
             elif in_reader and not in_toc and sw_state == 0 and last_sw_state == 1:
-                # Show modal overlay
                 in_modal = True
                 modal_selected = 0
                 modal_view.show_modal(modal_selected)
