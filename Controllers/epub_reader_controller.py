@@ -8,8 +8,10 @@ class EpubReaderController:
         self.display = display
         self.book = epub.read_epub(book_path)
         self.view = EpubReaderView(display)
-        self.pages = self._extract_pages()
         self.current_page = 0
+        self.toc = []
+        self.toc_selected_index = 0
+        # Do NOT call self._extract_pages() here
 
     def _extract_pages(self):
         # Simple text extraction, one page per item
