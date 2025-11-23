@@ -1,5 +1,5 @@
 from ebooklib import epub, ITEM_DOCUMENT
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from Views.epub_reader_view import EpubReaderView
 from bs4 import BeautifulSoup
 
@@ -20,10 +20,61 @@ class EpubReaderController:
             pages.append(img)
         return pages if pages else [self._render_text_to_image("No content")]
 
-    def _render_text_to_image(self, text):
+    def _render_text_to_image(self, html):
         img = Image.new("1", (self.display.width, self.display.height), 255)
         draw = ImageDraw.Draw(img)
-        draw.text((10, 10), text[:1000], fill=0)  # Simple, first 1000 chars
+        soup = BeautifulSoup(html, "html.parser")
+
+        font_normal = self.display.font_title
+        font_heading = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
+        font_subheading = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+
+        x, y = 20, 20
+        line_spacing = 8
+
+        for elem in soup.body.find_all(["h1", "h2", "h3", "p"], recursive=True):
+            text = elem.get_text()
+            if elem.name == "h1":
+                draw.text((x, y), text, font=font_heading, fill=0)
+                bbox = draw.textbbox((x, y), text, font=font_heading)
+                h = bbox[3] - bbox[1]
+                y += h + line_spacing * 2
+            elif elem.name == "h2":
+                draw.text((x, y), text, font=font_subheading, fill=0)
+                bbox = draw.textbbox((x, y), text, font=font_subheading)
+                h = bbox[3] - bbox[1]
+                y += h + line_spacing * 2
+            elif elem.name == "h3":
+                draw.text((x, y), text, font=font_subheading, fill=0)
+                bbox = draw.textbbox((x, y), text, font=font_subheading)
+                h = bbox[3] - bbox[1]
+                y += h + line_spacing
+            elif elem.name == "p":
+                max_width = self.display.width - 40
+                lines = []
+                words = text.split()
+                line = ""
+                for word in words:
+                    test_line = line + " " + word if line else word
+                    bbox = draw.textbbox((x, y), test_line, font=font_normal)
+                    w = bbox[2] - bbox[0]
+                    if w > max_width:
+                        lines.append(line)
+                        line = word
+                    else:
+                        line = test_line
+                if line:
+                    lines.append(line)
+                for l in lines:
+                    draw.text((x, y), l, font=font_normal, fill=0)
+                    bbox = draw.textbbox((x, y), l, font=font_normal)
+                    h = bbox[3] - bbox[1]
+                    y += h + line_spacing
+                y += line_spacing
+
+            if y > self.display.height - 40:
+                break
+
         return img
 
     def show_page(self):

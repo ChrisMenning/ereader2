@@ -127,6 +127,7 @@ def main():
                     library_view.display_library(ebooks, selected_index)
                 # Button press to open reader
                 if sw_state == 0 and last_sw_state == 1:  # Button pressed
+                    print("Opening book:", ebooks[selected_index]["title"])
                     book_path = ebooks[selected_index]["path"]
                     reader_controller = EpubReaderController(display, book_path)
                     reader_controller.show_toc()
