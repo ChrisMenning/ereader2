@@ -3,13 +3,15 @@ import sys
 import time
 from PIL import Image
 import io
-from ebooklib import epub
+from ebooklib import epub, ITEM_DOCUMENT
 
 from Configs.rotary_encoder_input import CLK, DT, SW, GPIO, setup_encoder
 from Configs.epaper_display_output import EPaperDisplay
 from Views.library_view import LibraryView
 from Controllers.epub_reader_controller import EpubReaderController
 from Views.epub_reader_view import EpubReaderView
+from Views.reader_modal_view import ReaderModalView
+from Services.bookmark_service import BookmarkService
 
 sys.path.append('/home/mcmudgeon/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
@@ -98,6 +100,8 @@ def main():
     setup_encoder()
     display = EPaperDisplay()
     library_view = LibraryView(display)
+    modal_view = ReaderModalView(display)
+    bookmark_service = BookmarkService()
 
     ebooks = get_ebooks_list()
     selected_index = 0
@@ -105,6 +109,9 @@ def main():
     last_sw_state = GPIO.input(SW)
     in_reader = False
     in_toc = False
+    in_modal = False
+    modal_selected = 0
+    reader_controller = None
 
     def render_library_view():
         library_view.display_library(ebooks, selected_index)
@@ -116,6 +123,44 @@ def main():
             clk_state = GPIO.input(CLK)
             dt_state = GPIO.input(DT)
             sw_state = GPIO.input(SW)
+
+            # Modal navigation
+            if in_modal:
+                if clk_state == 0 and last_clk_state == 1:
+                    if dt_state == 1:
+                        modal_selected = (modal_selected - 1) % len(modal_view.get_options())
+                    else:
+                        modal_selected = (modal_selected + 1) % len(modal_view.get_options())
+                    modal_view.show_modal(modal_selected)
+                if sw_state == 0 and last_sw_state == 1:
+                    option = modal_view.get_options()[modal_selected]
+                    print(f"[MODAL] Selected: {option}")
+                    if option == "Place Bookmark":
+                        bookmark_service.place_bookmark(reader_controller.current_chapter_index, reader_controller.current_page)
+                        print(f"[MODAL] Bookmark placed at chapter {reader_controller.current_chapter_index}, page {reader_controller.current_page}")
+                    elif option == "Go to Bookmark" and bookmark_service.has_bookmark():
+                        chapter_idx, page_idx = bookmark_service.get_bookmark()
+                        items = [item for item in reader_controller.book.get_items_of_type(ITEM_DOCUMENT)]
+                        chapter_item = items[chapter_idx]
+                        text = chapter_item.get_content().decode("utf-8", errors="ignore")
+                        reader_controller.pages = reader_controller.paginate_html(text)
+                        reader_controller.current_chapter_index = chapter_idx
+                        reader_controller.current_page = page_idx
+                        reader_controller.show_page()
+                        print(f"[MODAL] Jumped to bookmark at chapter {chapter_idx}, page {page_idx}")
+                    elif option == "Back to Library":
+                        in_reader = False
+                        in_toc = False
+                        render_library_view()
+                    # Cancel or after any action, close modal
+                    in_modal = False
+                    modal_selected = 0
+                    if in_reader and not in_toc:
+                        reader_controller.show_page()
+                last_clk_state = clk_state
+                last_sw_state = sw_state
+                time.sleep(0.01)
+                continue
 
             # Only act on falling edge of CLK
             if clk_state == 0 and last_clk_state == 1:
@@ -138,7 +183,7 @@ def main():
                     else:
                         reader_controller.next_page()
 
-            # Button press to open reader
+            # Button press to open reader or modal
             if not in_reader and sw_state == 0 and last_sw_state == 1:
                 print("Opening book:", ebooks[selected_index]["title"])
                 book_path = ebooks[selected_index]["path"]
@@ -149,6 +194,11 @@ def main():
             elif in_toc and sw_state == 0 and last_sw_state == 1:
                 reader_controller.toc_select()
                 in_toc = False  # Exit TOC mode after selection
+            elif in_reader and not in_toc and sw_state == 0 and last_sw_state == 1:
+                # Show modal overlay
+                in_modal = True
+                modal_selected = 0
+                modal_view.show_modal(modal_selected)
 
             last_clk_state = clk_state
             last_sw_state = sw_state
