@@ -65,7 +65,7 @@ def get_ebooks_list():
                     title = book.metadata["DC"]["title"][0]
                 cover = extract_cover(book)
                 if cover:
-                    cover = cover.resize((THUMB_SIZE, THUMB_SIZE)).convert("1")
+                    cover = cover.resize((THUMB_SIZE, THUMB_SIZE)).convert("L")
             except:
                 cover = None
         # Cover image for CBZ (first image in archive)
@@ -77,12 +77,11 @@ def get_ebooks_list():
                     if image_files:
                         with archive.open(image_files[0]) as file:
                             img = Image.open(file).convert("L")
-                            img = img.resize((THUMB_SIZE, THUMB_SIZE))
-                            cover = img.point(lambda x: 0 if x < 128 else 255, '1')
+                            cover = img.resize((THUMB_SIZE, THUMB_SIZE))
             except:
                 cover = None
         if not cover:
-            cover = Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255)
+            cover = Image.new("L", (THUMB_SIZE, THUMB_SIZE), 255)
 
         books.append({
             "filename": filename,
