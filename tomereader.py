@@ -138,15 +138,24 @@ def main():
                     option = modal_view.get_options()[modal_selected]
                     print(f"[MODAL] Selected: {option}")
                     if option == "Place Bookmark":
-                        bookmark_service.place_bookmark(reader_controller.current_chapter_index, reader_controller.current_page)
-                        print(f"[MODAL] Bookmark placed at chapter {reader_controller.current_chapter_index}, page {reader_controller.current_page}")
+                        if selected_book["type"] == "epub":
+                            bookmark_service.place_bookmark(reader_controller.current_chapter_index, reader_controller.current_page)
+                            print(f"[MODAL] Bookmark placed at chapter {reader_controller.current_chapter_index}, page {reader_controller.current_page}")
+                        elif selected_book["type"] == "cbz":
+                            bookmark_service.place_bookmark(None, reader_controller.current_page)
+                            print(f"[MODAL] Bookmark placed at page {reader_controller.current_page}")
                     elif option == "Go to Bookmark" and bookmark_service.has_bookmark():
                         chapter_idx, page_idx = bookmark_service.get_bookmark()
-                        reader_controller.current_chapter_index = chapter_idx
-                        reader_controller.load_chapter(chapter_idx)
-                        reader_controller.current_page = page_idx
-                        reader_controller.show_page()
-                        print(f"[MODAL] Jumped to bookmark at chapter {chapter_idx}, page {page_idx}")
+                        if selected_book["type"] == "epub":
+                            reader_controller.current_chapter_index = chapter_idx
+                            reader_controller.load_chapter(chapter_idx)
+                            reader_controller.current_page = page_idx
+                            reader_controller.show_page()
+                            print(f"[MODAL] Jumped to bookmark at chapter {chapter_idx}, page {page_idx}")
+                        elif selected_book["type"] == "cbz":
+                            reader_controller.current_page = page_idx
+                            reader_controller.show_page()
+                            print(f"[MODAL] Jumped to bookmark at page {page_idx}")
                     elif option == "Back to Library":
                         in_reader = False
                         in_toc = False

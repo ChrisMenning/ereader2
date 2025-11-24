@@ -25,7 +25,8 @@ class EPaperDisplay:
 
     def update_display(self):
         rotated_fb = self.fb.rotate(270, expand=True)
-        self.epd.display(self.epd.getbuffer(rotated_fb))
+        # Use 4-gray display method
+        self.epd.display_4Gray(self.epd.getbuffer_4Gray(rotated_fb))
 
     def sleep(self):
         self.epd.sleep()
