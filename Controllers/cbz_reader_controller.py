@@ -24,6 +24,9 @@ class CBZReaderController:
         with zipfile.ZipFile(self.cbz_path, 'r') as archive:
             with archive.open(self.image_files[index]) as file:
                 img = Image.open(file).convert("L")
+                # Rotate if wider than tall
+                if img.width > img.height:
+                    img = img.rotate(90, expand=True)
                 # Enhance contrast
                 img = ImageOps.autocontrast(img)
                 enhancer = ImageEnhance.Contrast(img)
