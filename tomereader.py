@@ -14,6 +14,7 @@ from Views.reader_modal_view import ReaderModalView
 from Services.bookmark_service import BookmarkService
 from Controllers.cbz_reader_controller import CBZReaderController
 from Views.cbz_reader_view import CBZReaderView
+from Views.splash_screen_view import SplashScreenView
 
 sys.path.append('/home/mcmudgeon/e-Paper/RaspberryPi_JetsonNano/python/lib')
 
@@ -96,6 +97,10 @@ def get_ebooks_list():
 def main():
     setup_encoder()
     display = EPaperDisplay()
+    splash_view = SplashScreenView(display)
+    splash_view.show()
+    time.sleep(5)  # Show splash for 5 seconds
+
     library_view = LibraryView(display)
     modal_view = ReaderModalView(display)
     bookmark_service = BookmarkService()
