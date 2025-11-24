@@ -1,5 +1,6 @@
 import os
 import sys
+import threading
 import time
 from PIL import Image
 import io
@@ -98,13 +99,13 @@ def main():
     display = EPaperDisplay()
     splash_view = SplashScreenView(display)
     splash_view.show()
-    time.sleep(5)  # Show splash for 5 seconds
+    time.sleep(2)  # Show splash for 2 seconds
 
     library_view = LibraryView(display)
     modal_view = ReaderModalView(display)
     bookmark_service = BookmarkService()
 
-    ebooks = get_ebooks_list()
+    ebooks = []
     selected_index = 0
     last_clk_state = GPIO.input(CLK)
     last_sw_state = GPIO.input(SW)
@@ -117,7 +118,13 @@ def main():
     def render_library_view():
         library_view.display_library(ebooks, selected_index)
 
-    render_library_view()
+    # Load ebooks in a background thread
+    def load_books():
+        nonlocal ebooks
+        ebooks = get_ebooks_list()
+        render_library_view()
+
+    threading.Thread(target=load_books, daemon=True).start()
 
     try:
         while True:
@@ -219,7 +226,6 @@ def main():
 
     except KeyboardInterrupt:
         print("Exiting Tome Reader...")
-
     finally:
         display.clear()
         display.sleep()
