@@ -26,6 +26,7 @@ class LibraryView:
              (radio_x + radio_radius, radio_y + radio_radius)],
             outline=0, width=2
         )
+
         if selected:
             fill_radius = radio_radius // 2
             self.display.draw.ellipse(
@@ -34,8 +35,10 @@ class LibraryView:
                 fill=0
             )
 
-        # Thumbnail
+        # Thumbnail (convert to 1-bit for fast display)
         thumb = book.get("thumbnail", Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255))
+        if thumb.mode != "1":
+            thumb = thumb.convert("1")
         self.display.fb.paste(thumb, (left_padding + 2 * radio_radius + 8, y))
 
         # Title
@@ -49,4 +52,4 @@ class LibraryView:
         self.display.clear_framebuffer()
         for i, book in enumerate(books):
             self.draw_library_item(book, i, i == selected_index)
-        self.display.update_display()
+        self.display.update_display(mode="1")  # This should use the 1-bit display method

@@ -29,4 +29,4 @@ class CBZReaderView:
             fill=0
         )
 
-        self.display.update_display()
+        self.display.update_display(mode="4gray")
