@@ -1,16 +1,16 @@
 from PIL import Image
 from Views.Components.radio_button import draw_radio_button
 
-# Library View
 THUMB_SIZE = 64
 LINE_HEIGHT = THUMB_SIZE + 10
+VISIBLE_ITEMS = 10  # Number of items visible at once
 
 class LibraryView:
     def __init__(self, display):
         self.display = display
 
-    def draw_library_item(self, book, index, selected):
-        y = 10 + index * LINE_HEIGHT
+    def draw_library_item(self, book, index, selected, y_offset):
+        y = 10 + (index - y_offset) * LINE_HEIGHT
         radio_radius = 12
         left_padding = 16
         radio_x = left_padding + radio_radius
@@ -22,7 +22,7 @@ class LibraryView:
              (radio_x + radio_radius + 4, radio_y + radio_radius + 4)],
             fill=255
         )
-        draw_radio_button(self.display.draw, (radio_x, radio_y), radio_radius, selected)  # Use component
+        draw_radio_button(self.display.draw, (radio_x, radio_y), radio_radius, selected)
 
         # Thumbnail (convert to 1-bit for fast display)
         thumb = book.get("thumbnail", Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255))
@@ -39,6 +39,19 @@ class LibraryView:
 
     def display_library(self, books, selected_index):
         self.display.clear_framebuffer()
-        for i, book in enumerate(books):
-            self.draw_library_item(book, i, i == selected_index)
-        self.display.update_display(mode="1")  # This should use the 1-bit display method
+        total_books = len(books)
+        # Calculate the window of visible items
+        if total_books <= VISIBLE_ITEMS:
+            start = 0
+            end = total_books
+        else:
+            # Center selected item in the window if possible
+            half = VISIBLE_ITEMS // 2
+            start = max(0, selected_index - half)
+            end = start + VISIBLE_ITEMS
+            if end > total_books:
+                end = total_books
+                start = end - VISIBLE_ITEMS
+        for i in range(start, end):
+            self.draw_library_item(books[i], i, i == selected_index, start)
+        self.display.update_display(mode="1")
