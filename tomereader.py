@@ -91,6 +91,8 @@ def get_ebooks_list():
             "thumbnail": cover,
             "type": ext
         })
+    # Sort books by title (case-insensitive)
+    books.sort(key=lambda b: b["title"].lower())
     return books
 
 
