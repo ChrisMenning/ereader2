@@ -10,6 +10,8 @@ class CBZReaderController:
         self.images = []
         self.current_page = 0
         self._load_images()
+        self._page_cache = {}  # {index: image}
+        self._preload_pages(self.current_page)
 
     def _load_images(self):
         # Only load image file names, not the images themselves
@@ -18,6 +20,16 @@ class CBZReaderController:
                 [f for f in archive.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif'))]
             )
         self.total_pages = len(self.image_files)
+
+    def _preload_pages(self, index):
+        # Preload previous, current, and next page images
+        for i in [index - 1, index, index + 1]:
+            if 0 <= i < self.total_pages and i not in self._page_cache:
+                self._page_cache[i] = self._get_page_image(i)
+        # Optionally, remove far-away pages from cache
+        for k in list(self._page_cache.keys()):
+            if abs(k - index) > 1:
+                del self._page_cache[k]
 
     def _get_page_image(self, index):
         with zipfile.ZipFile(self.cbz_path, 'r') as archive:
@@ -46,7 +58,8 @@ class CBZReaderController:
 
     def show_page(self):
         if 0 <= self.current_page < self.total_pages:
-            img = self._get_page_image(self.current_page)
+            self._preload_pages(self.current_page)
+            img = self._page_cache[self.current_page]
             self.view.display_page(
                 img,
                 page_num=self.current_page,

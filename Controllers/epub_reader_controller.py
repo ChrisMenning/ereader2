@@ -18,7 +18,7 @@ class EpubReaderController:
         self.pages = []
         self.current_chapter_index = 0
         self.chapter_cache = {}
-        # REMOVE total book pages calculation for performance
+        self._page_cache = {}  # {index: image}
 
     def _extract_pages(self):
         pages = []
@@ -163,9 +163,17 @@ class EpubReaderController:
 
         return pages
 
+    def _preload_pages(self, index):
+        for i in [index - 1, index, index + 1]:
+            if 0 <= i < len(self.pages) and i not in self._page_cache:
+                self._page_cache[i] = self.pages[i]
+        for k in list(self._page_cache.keys()):
+            if abs(k - index) > 1:
+                del self._page_cache[k]
+
     def show_page(self):
         if self.pages and 0 <= self.current_page < len(self.pages):
-            print(f"[DEBUG] Showing page {self.current_page + 1} of {len(self.pages)}")
+            self._preload_pages(self.current_page)
             # Get book title robustly
             book_title = ""
             dc_meta = self.book.metadata.get("DC", {})
@@ -190,7 +198,7 @@ class EpubReaderController:
                         chapter_title = section.get("title")
             # DO NOT calculate total book pages here
             self.view.display_page(
-                self.pages[self.current_page],
+                self._page_cache[self.current_page],
                 book_title=book_title,
                 chapter_title=chapter_title,
                 page_num=self.current_page,
@@ -201,7 +209,6 @@ class EpubReaderController:
     def next_page(self):
         if self.pages and self.current_page < len(self.pages) - 1:
             self.current_page += 1
-            print(f"[DEBUG] Advancing to next page: {self.current_page + 1}")
             self.show_page()
         else:
             # At last page of chapter, try to advance to next chapter
@@ -218,7 +225,6 @@ class EpubReaderController:
     def prev_page(self):
         if self.pages and self.current_page > 0:
             self.current_page -= 1
-            print(f"[DEBUG] Returning to previous page: {self.current_page + 1}")
             self.show_page()
         else:
             # At first page of chapter, try to go to previous chapter
