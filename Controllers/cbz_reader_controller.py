@@ -1,6 +1,9 @@
 import zipfile
+import threading
 from PIL import Image, ImageOps, ImageEnhance
 from Views.cbz_reader_view import CBZReaderView
+
+CACHE_SIZE = 50
 
 class CBZReaderController:
     def __init__(self, display, cbz_path):
@@ -10,26 +13,38 @@ class CBZReaderController:
         self.images = []
         self.current_page = 0
         self._load_images()
-        self._page_cache = {}  # {index: image}
-        self._preload_pages(self.current_page)
+        self._page_cache = {}
+        self._cache_start = 0
+        self._cache_end = min(CACHE_SIZE, self.total_pages)
+        self._cache_thread = None
+        # Load first page synchronously
+        self._page_cache[self.current_page] = self._get_page_image(self.current_page)
+        # Start background cache
+        self._start_cache_thread(self._cache_start, self._cache_end)
 
     def _load_images(self):
-        # Only load image file names, not the images themselves
         with zipfile.ZipFile(self.cbz_path, 'r') as archive:
             self.image_files = sorted(
                 [f for f in archive.namelist() if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif'))]
             )
         self.total_pages = len(self.image_files)
 
-    def _preload_pages(self, index):
-        # Preload previous, current, and next page images
-        for i in [index - 1, index, index + 1]:
+    def _preload_pages(self, start, end):
+        for i in range(start, end):
             if 0 <= i < self.total_pages and i not in self._page_cache:
                 self._page_cache[i] = self._get_page_image(i)
-        # Optionally, remove far-away pages from cache
+        # Remove pages outside the cache window
         for k in list(self._page_cache.keys()):
-            if abs(k - index) > 1:
+            if k < start or k >= end:
                 del self._page_cache[k]
+
+    def _start_cache_thread(self, start, end):
+        if self._cache_thread and self._cache_thread.is_alive():
+            return  # Already caching
+        def cache_worker():
+            self._preload_pages(start, end)
+        self._cache_thread = threading.Thread(target=cache_worker, daemon=True)
+        self._cache_thread.start()
 
     def _get_page_image(self, index):
         with zipfile.ZipFile(self.cbz_path, 'r') as archive:
@@ -53,19 +68,24 @@ class CBZReaderController:
                 paste_x = (self.display.width - new_width) // 2
                 paste_y = (self.display.height - new_height) // 2
                 final_img.paste(img, (paste_x, paste_y))
-                # Do NOT convert to 1-bit!
                 return final_img
 
     def show_page(self):
-        if 0 <= self.current_page < self.total_pages:
-            self._preload_pages(self.current_page)
-            img = self._page_cache[self.current_page]
-            self.view.display_page(
-                img,
-                page_num=self.current_page,
-                total_pages=self.total_pages,
-                cbz_filename=self.cbz_path.split('/')[-1]
-            )
+        # Check if current page is outside cache window
+        if not (self._cache_start <= self.current_page < self._cache_end):
+            self._cache_start = (self.current_page // CACHE_SIZE) * CACHE_SIZE
+            self._cache_end = min(self._cache_start + CACHE_SIZE, self.total_pages)
+            self._start_cache_thread(self._cache_start, self._cache_end)
+        # If not cached, load synchronously
+        if self.current_page not in self._page_cache:
+            self._page_cache[self.current_page] = self._get_page_image(self.current_page)
+        img = self._page_cache[self.current_page]
+        self.view.display_page(
+            img,
+            page_num=self.current_page,
+            total_pages=self.total_pages,
+            cbz_filename=self.cbz_path.split('/')[-1]
+        )
 
     def next_page(self):
         if self.current_page < self.total_pages - 1:

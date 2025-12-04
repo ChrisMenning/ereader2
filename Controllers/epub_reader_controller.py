@@ -1,3 +1,4 @@
+import threading
 from ebooklib import epub, ITEM_DOCUMENT
 from PIL import Image, ImageDraw, ImageFont
 from Views.epub_reader_view import EpubReaderView
@@ -20,6 +21,18 @@ class EpubReaderController:
         self.current_chapter_index = 0
         self.chapter_cache = {}
         self._page_cache = {}  # {index: image}
+        self._cache_thread = None
+        self._cache_start = 0
+        self._cache_end = 0
+        self.CACHE_SIZE = 50
+
+        # Load all pages for the current chapter
+        self.pages = self._extract_pages()
+        self._cache_end = min(self.CACHE_SIZE, len(self.pages))
+        # Load first page synchronously
+        self._page_cache[self.current_page] = self.pages[self.current_page]
+        # Start background cache
+        self._start_cache_thread(self._cache_start, self._cache_end)
 
     def _extract_pages(self):
         pages = []
@@ -164,48 +177,62 @@ class EpubReaderController:
 
         return pages
 
-    def _preload_pages(self, index):
-        for i in [index - 1, index, index + 1]:
+    def _preload_pages(self, start, end):
+        for i in range(start, end):
             if 0 <= i < len(self.pages) and i not in self._page_cache:
                 self._page_cache[i] = self.pages[i]
+        # Remove pages outside the cache window
         for k in list(self._page_cache.keys()):
-            if abs(k - index) > 1:
+            if k < start or k >= end:
                 del self._page_cache[k]
 
+    def _start_cache_thread(self, start, end):
+        if self._cache_thread and self._cache_thread.is_alive():
+            return  # Already caching
+        def cache_worker():
+            self._preload_pages(start, end)
+        self._cache_thread = threading.Thread(target=cache_worker, daemon=True)
+        self._cache_thread.start()
+
     def show_page(self):
-        if self.pages and 0 <= self.current_page < len(self.pages):
-            self._preload_pages(self.current_page)
-            # Get book title robustly
-            book_title = ""
-            dc_meta = self.book.metadata.get("DC", {})
-            if "title" in dc_meta and dc_meta["title"]:
-                book_title = dc_meta["title"][0]
-            elif hasattr(self.book, "title"):
-                book_title = self.book.title
-            # Try to get chapter title from the current chapter's item
-            items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
-            chapter_title = ""
-            if 0 <= self.current_chapter_index < len(items):
-                soup = BeautifulSoup(items[self.current_chapter_index].get_content(), "html.parser")
-                h1 = soup.find("h1")
-                h2 = soup.find("h2")
-                if h1 and h1.text.strip():
-                    chapter_title = h1.text.strip()
-                elif h2 and h2.text.strip():
-                    chapter_title = h2.text.strip()
-                else:
-                    section = soup.find("section")
-                    if section and section.get("title"):
-                        chapter_title = section.get("title")
-            # DO NOT calculate total book pages here
-            self.view.display_page(
-                self._page_cache[self.current_page],
-                book_title=book_title,
-                chapter_title=chapter_title,
-                page_num=self.current_page,
-                total_pages=len(self.pages),
-                book_total_pages=None  # Pass None, disables book page count in footer
-            )
+        # Check if current page is outside cache window
+        if not (self._cache_start <= self.current_page < self._cache_end):
+            self._cache_start = (self.current_page // self.CACHE_SIZE) * self.CACHE_SIZE
+            self._cache_end = min(self._cache_start + self.CACHE_SIZE, len(self.pages))
+            self._start_cache_thread(self._cache_start, self._cache_end)
+        # If not cached, load synchronously
+        if self.current_page not in self._page_cache:
+            self._page_cache[self.current_page] = self.pages[self.current_page]
+        # Get book title robustly
+        book_title = ""
+        dc_meta = self.book.metadata.get("DC", {})
+        if "title" in dc_meta and dc_meta["title"]:
+            book_title = dc_meta["title"][0]
+        elif hasattr(self.book, "title"):
+            book_title = self.book.title
+        # Try to get chapter title from the current chapter's item
+        items = [item for item in self.book.get_items_of_type(ITEM_DOCUMENT)]
+        chapter_title = ""
+        if 0 <= self.current_chapter_index < len(items):
+            soup = BeautifulSoup(items[self.current_chapter_index].get_content(), "html.parser")
+            h1 = soup.find("h1")
+            h2 = soup.find("h2")
+            if h1 and h1.text.strip():
+                chapter_title = h1.text.strip()
+            elif h2 and h2.text.strip():
+                chapter_title = h2.text.strip()
+            else:
+                section = soup.find("section")
+                if section and section.get("title"):
+                    chapter_title = section.get("title")
+        self.view.display_page(
+            self._page_cache[self.current_page],
+            book_title=book_title,
+            chapter_title=chapter_title,
+            page_num=self.current_page,
+            total_pages=len(self.pages),
+            book_total_pages=None  # Pass None, disables book page count in footer
+        )
 
     def next_page(self):
         if self.pages and self.current_page < len(self.pages) - 1:
@@ -219,6 +246,11 @@ class EpubReaderController:
                 text = next_chapter.get_content().decode("utf-8", errors="ignore")
                 self.pages = self.paginate_html(text)
                 self.current_page = 0
+                self._page_cache.clear()
+                self._cache_start = 0
+                self._cache_end = min(self.CACHE_SIZE, len(self.pages))
+                self._page_cache[self.current_page] = self.pages[self.current_page]
+                self._start_cache_thread(self._cache_start, self._cache_end)
                 self.show_page()
             else:
                 print("[DEBUG] Already at last page and last chapter.")
@@ -235,6 +267,11 @@ class EpubReaderController:
                 text = prev_chapter.get_content().decode("utf-8", errors="ignore")
                 self.pages = self.paginate_html(text)
                 self.current_page = len(self.pages) - 1
+                self._page_cache.clear()
+                self._cache_start = max(0, self.current_page - self.CACHE_SIZE + 1)
+                self._cache_end = self.current_page + 1
+                self._page_cache[self.current_page] = self.pages[self.current_page]
+                self._start_cache_thread(self._cache_start, self._cache_end)
                 self.show_page()
             else:
                 print("[DEBUG] Already at first page and first chapter.")
