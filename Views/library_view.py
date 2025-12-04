@@ -1,4 +1,5 @@
 from PIL import Image
+from Views.Components.radio_button import draw_radio_button
 
 # Library View
 THUMB_SIZE = 64
@@ -15,25 +16,13 @@ class LibraryView:
         radio_x = left_padding + radio_radius
         radio_y = y + LINE_HEIGHT // 2
 
-        # Radio button
+        # Radio button background
         self.display.draw.rectangle(
             [(radio_x - radio_radius - 4, radio_y - radio_radius - 4),
              (radio_x + radio_radius + 4, radio_y + radio_radius + 4)],
             fill=255
         )
-        self.display.draw.ellipse(
-            [(radio_x - radio_radius, radio_y - radio_radius),
-             (radio_x + radio_radius, radio_y + radio_radius)],
-            outline=0, width=2
-        )
-
-        if selected:
-            fill_radius = radio_radius // 2
-            self.display.draw.ellipse(
-                [(radio_x - fill_radius, radio_y - fill_radius),
-                 (radio_x + fill_radius, radio_y + fill_radius)],
-                fill=0
-            )
+        draw_radio_button(self.display.draw, (radio_x, radio_y), radio_radius, selected)  # Use component
 
         # Thumbnail (convert to 1-bit for fast display)
         thumb = book.get("thumbnail", Image.new("1", (THUMB_SIZE, THUMB_SIZE), 255))

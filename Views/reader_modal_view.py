@@ -1,4 +1,5 @@
 from PIL import ImageDraw
+from Views.Components.radio_button import draw_radio_button
 
 MODAL_OPTIONS = [
     "Place Bookmark",
@@ -31,17 +32,7 @@ class ReaderModalView:
             radio_x = modal_x + 20
             radio_y = y + 12
             radio_radius = 10
-            draw.ellipse(
-                [(radio_x - radio_radius, radio_y - radio_radius),
-                 (radio_x + radio_radius, radio_y + radio_radius)],
-                outline=0, width=2
-            )
-            if selected:
-                draw.ellipse(
-                    [(radio_x - radio_radius//2, radio_y - radio_radius//2),
-                     (radio_x + radio_radius//2, radio_y + radio_radius//2)],
-                    fill=0
-                )
+            draw_radio_button(draw, (radio_x, radio_y), radio_radius, selected)
             draw.text((radio_x + 2 * radio_radius + 8, y), option, fill=0, font=self.display.font_title)
 
         # Rotate modal_fb before displaying, just like update_display()

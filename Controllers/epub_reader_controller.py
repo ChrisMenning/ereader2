@@ -1,6 +1,7 @@
 from ebooklib import epub, ITEM_DOCUMENT
 from PIL import Image, ImageDraw, ImageFont
 from Views.epub_reader_view import EpubReaderView
+from Views.Components.radio_button import draw_radio_button
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 BLOCK_TAGS = ("p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "div", "table")
@@ -287,17 +288,7 @@ class EpubReaderController:
             radio_x = 20
             radio_y = y + 12
             radio_radius = 10
-            self.display.draw.ellipse(
-                [(radio_x - radio_radius, radio_y - radio_radius),
-                 (radio_x + radio_radius, radio_y + radio_radius)],
-                outline=0, width=2
-            )
-            if selected:
-                self.display.draw.ellipse(
-                    [(radio_x - radio_radius//2, radio_y - radio_radius//2),
-                     (radio_x + radio_radius//2, radio_y + radio_radius//2)],
-                    fill=0
-                )
+            draw_radio_button(self.display.draw, (radio_x, radio_y), radio_radius, selected)  # Use component
             self.display.draw.text((radio_x + 2 * radio_radius + 8, y), entry["title"], fill=0)
             y += 32
         self.display.update_display()
