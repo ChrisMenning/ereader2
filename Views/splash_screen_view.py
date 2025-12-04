@@ -49,14 +49,14 @@ class SplashScreenView:
             splash_text_tome,
             font=self.font,
             fill=0,
-            spacing=4
+            spacing=0
         )
         self.display.draw.multiline_text(
             (20, y_reader),
             splash_text_reader,
             font=self.font,
             fill=0,
-            spacing=4
+            spacing=0
         )
         self.display.draw.multiline_text(
             (20, y_subtitle),
