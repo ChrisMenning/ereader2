@@ -9,10 +9,12 @@ class EPaperDisplay:
         self.font_title = ImageFont.load_default()
         self.fb = Image.new("1", (self.width, self.height), 255)
         self.draw = ImageDraw.Draw(self.fb)
+        self.current_mode = "1"  # Track current mode
         self.init_display()
 
     def init_display(self):
         self.epd.init()
+        self.current_mode = "1"
         self.clear()
 
     def clear(self):
@@ -26,10 +28,14 @@ class EPaperDisplay:
     def update_display(self, mode="1"):
         rotated_fb = self.fb.rotate(270, expand=True)
         if mode == "1":
-            # Fast 1-bit display (for Library View, Modal, etc.)
+            if self.current_mode != "1":
+                self.epd.init()
+                self.current_mode = "1"
             self.epd.display(self.epd.getbuffer(rotated_fb))
         elif mode == "4gray":
-            # Slow 4-gray display (for CBZ pages, etc.)
+            if self.current_mode != "4gray":
+                self.epd.init_4Gray()
+                self.current_mode = "4gray"
             self.epd.display_4Gray(self.epd.getbuffer_4Gray(rotated_fb))
 
     def sleep(self):
