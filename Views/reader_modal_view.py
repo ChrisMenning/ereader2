@@ -49,29 +49,41 @@ class ReaderModalView:
     def partial_refresh_radio_buttons(self, num_options, selected_index):
         # Modal geometry (must match show_modal)
         modal_width = self.display.width // 2
-        modal_height = LINE_HEIGHT * num_options + 40
+        modal_height = 32 * num_options + 40
         modal_x = (self.display.width - modal_width) // 2
         modal_y = (self.display.height - modal_height) // 2
 
         radio_radius = 10
         radio_x = modal_x + 20
-        y0 = modal_y + 40  # where the first radio button row starts
+        # The radio buttons are drawn at radio_y = modal_y + 40 + i * 32 + 12 in show_modal
+        # So the region should start at the top of the first radio button's bounding box
+        first_radio_y = modal_y + 40 + 12
+        last_radio_y = modal_y + 40 + (num_options - 1) * 32 + 12
+        # Start region just below the 'Options' title
+        y0 = modal_y + 20  # Top of first radio button row
+        y1 = y0 + num_options * 32  # Bottom of last radio button row
         x0 = radio_x - radio_radius - 4
         x1 = radio_x + radio_radius + 4
-        y1 = y0 + num_options * LINE_HEIGHT
 
+        # Align region to 8-pixel boundaries for e-paper
         x0_aligned = (x0 // 8) * 8
         x1_aligned = ((x1 + 7) // 8) * 8
+        y0_aligned = (y0 // 8) * 8
+        y1_aligned = ((y1 + 7) // 8) * 8
         region_width = x1_aligned - x0_aligned
-        region_height = y1 - y0
+        region_height = y1_aligned - y0_aligned
 
         img = Image.new("1", (region_width, region_height), 255)
         draw = ImageDraw.Draw(img)
         for i in range(num_options):
-            y = (i * LINE_HEIGHT) + LINE_HEIGHT // 2
+            # Calculate the radio button's y position relative to the region
+            abs_radio_y = modal_y + 40 + i * 32 + 12
+            rel_radio_y = abs_radio_y - y0_aligned
             selected = (i == selected_index)
-            draw_radio_button(draw, (radio_x - x0_aligned, y), radio_radius, selected)
+            draw_radio_button(draw, (radio_x - x0_aligned, rel_radio_y), radio_radius, selected)
+
         rotated_img = img.rotate(270, expand=True)
         buf = self.display.epd.getbuffer_region(rotated_img)
         self.display.epd.init_part()
-        self.display.epd.display_Partial(buf, y0, x0_aligned, y1, x1_aligned)
+        # After rotation, region's top-left is at (y0_aligned, x0_aligned)
+        self.display.epd.display_Partial(buf, y0_aligned, x0_aligned, y1_aligned, x1_aligned)
