@@ -155,6 +155,7 @@ def main():
                             print(f"[MODAL] Bookmark placed at page {reader_controller.current_page}")
                     elif option == "Go to Bookmark" and bookmark_service.has_bookmark():
                         chapter_idx, page_idx = bookmark_service.get_bookmark()
+                        display.init_display()  # Switch to full update mode before showing page
                         if selected_book["type"] == "epub":
                             reader_controller.current_chapter_index = chapter_idx
                             reader_controller.load_chapter(chapter_idx)
@@ -198,7 +199,7 @@ def main():
                         selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
                     # Only update radio buttons if selection changed
                     if ebooks and selected_index != prev_index:
-                        library_view.partial_refresh_radio_buttons(ebooks, selected_index)
+                        library_view.partial_refresh_radio_buttons(ebooks, selected_index, prev_index)
                 elif in_toc:
                     if dt_state == 1:
                         print("[ENCODER] Turned clockwise (Up/Back)")
