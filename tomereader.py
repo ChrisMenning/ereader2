@@ -178,7 +178,7 @@ def main():
                 time.sleep(0.01)
                 continue
 
-            # Only act on falling edge of CLK
+            # Encoder navigation (partial refresh for selection change)
             if clk_state == 0 and last_clk_state == 1:
                 if not in_reader:
                     prev_index = selected_index
@@ -206,11 +206,15 @@ def main():
                         print("[ENCODER] Turned counter-clockwise (Down/Next)")
                         reader_controller.next_page()
 
-            # Button press to open reader or modal
+            # Button press to open reader or modal (full refresh before opening)
             if not in_reader and sw_state == 0 and last_sw_state == 1:
                 selected_book = ebooks[selected_index]
                 print("Opening book:", selected_book["title"])
                 book_path = selected_book["path"]
+                library_view.display_library(ebooks, selected_index)  # Full refresh
+
+                display.init_display()  
+
                 if selected_book["type"] == "epub":
                     reader_controller = EpubReaderController(display, book_path)
                     reader_controller.show_toc()

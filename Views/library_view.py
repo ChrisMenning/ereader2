@@ -6,6 +6,25 @@ LINE_HEIGHT = THUMB_SIZE + 10
 VISIBLE_ITEMS = 10  # Number of items visible at once
 
 class LibraryView:
+    def partial_refresh_radio_buttons(self, books, selected_index):
+        """
+        Call this to only update the radio buttons (partial refresh).
+        """
+        total_books = len(books)
+        if total_books <= VISIBLE_ITEMS:
+            start = 0
+            end = total_books
+        else:
+            half = VISIBLE_ITEMS // 2
+            start = max(0, selected_index - half)
+            end = start + VISIBLE_ITEMS
+            if end > total_books:
+                end = total_books
+                start = end - VISIBLE_ITEMS
+        # The selected index relative to the visible window
+        rel_selected = selected_index - start
+        self.display.partial_refresh_radio_buttons(start, end - start, rel_selected)
+
     def __init__(self, display):
         self.display = display
 
