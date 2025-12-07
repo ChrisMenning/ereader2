@@ -180,23 +180,30 @@ def main():
 
             # Only act on falling edge of CLK
             if clk_state == 0 and last_clk_state == 1:
-                if dt_state == 1:
-                    print("[ENCODER] Turned clockwise (Up/Back)")
-                    if not in_reader:
+                if not in_reader:
+                    prev_index = selected_index
+                    if dt_state == 1:
+                        print("[ENCODER] Turned clockwise (Up/Back)")
                         selected_index = (selected_index - 1) % len(ebooks) if ebooks else 0
-                        library_view.display_library(ebooks, selected_index)
-                    elif in_toc:
+                    else:
+                        print("[ENCODER] Turned counter-clockwise (Down/Next)")
+                        selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
+                    # Only update radio buttons if selection changed
+                    if ebooks and selected_index != prev_index:
+                        library_view.partial_refresh_radio_buttons(ebooks, selected_index)
+                elif in_toc:
+                    if dt_state == 1:
+                        print("[ENCODER] Turned clockwise (Up/Back)")
                         reader_controller.toc_prev()
                     else:
-                        reader_controller.prev_page()
-                else:
-                    print("[ENCODER] Turned counter-clockwise (Down/Next)")
-                    if not in_reader:
-                        selected_index = (selected_index + 1) % len(ebooks) if ebooks else 0
-                        library_view.display_library(ebooks, selected_index)
-                    elif in_toc:
+                        print("[ENCODER] Turned counter-clockwise (Down/Next)")
                         reader_controller.toc_next()
+                else:
+                    if dt_state == 1:
+                        print("[ENCODER] Turned clockwise (Up/Back)")
+                        reader_controller.prev_page()
                     else:
+                        print("[ENCODER] Turned counter-clockwise (Down/Next)")
                         reader_controller.next_page()
 
             # Button press to open reader or modal
