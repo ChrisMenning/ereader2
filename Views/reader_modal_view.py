@@ -1,4 +1,4 @@
-from PIL import ImageDraw
+from PIL import Image, ImageDraw
 from Views.Components.radio_button import draw_radio_button
 
 MODAL_OPTIONS = [
@@ -7,6 +7,10 @@ MODAL_OPTIONS = [
     "Back to Library",
     "Cancel"
 ]
+
+THUMB_SIZE = 64
+LINE_HEIGHT = THUMB_SIZE + 10
+VISIBLE_OPTIONS = 4  # Adjust as needed for your modal
 
 class ReaderModalView:
     def __init__(self, display):
@@ -41,3 +45,33 @@ class ReaderModalView:
 
     def get_options(self):
         return MODAL_OPTIONS
+
+    def partial_refresh_radio_buttons(self, num_options, selected_index):
+        # Modal geometry (must match show_modal)
+        modal_width = self.display.width // 2
+        modal_height = LINE_HEIGHT * num_options + 40
+        modal_x = (self.display.width - modal_width) // 2
+        modal_y = (self.display.height - modal_height) // 2
+
+        radio_radius = 10
+        radio_x = modal_x + 20
+        y0 = modal_y + 40  # where the first radio button row starts
+        x0 = radio_x - radio_radius - 4
+        x1 = radio_x + radio_radius + 4
+        y1 = y0 + num_options * LINE_HEIGHT
+
+        x0_aligned = (x0 // 8) * 8
+        x1_aligned = ((x1 + 7) // 8) * 8
+        region_width = x1_aligned - x0_aligned
+        region_height = y1 - y0
+
+        img = Image.new("1", (region_width, region_height), 255)
+        draw = ImageDraw.Draw(img)
+        for i in range(num_options):
+            y = (i * LINE_HEIGHT) + LINE_HEIGHT // 2
+            selected = (i == selected_index)
+            draw_radio_button(draw, (radio_x - x0_aligned, y), radio_radius, selected)
+        rotated_img = img.rotate(270, expand=True)
+        buf = self.display.epd.getbuffer_region(rotated_img)
+        self.display.epd.init_part()
+        self.display.epd.display_Partial(buf, y0, x0_aligned, y1, x1_aligned)

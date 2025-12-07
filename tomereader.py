@@ -141,7 +141,8 @@ def main():
                         modal_selected = (modal_selected - 1) % len(modal_view.get_options())
                     else:
                         modal_selected = (modal_selected + 1) % len(modal_view.get_options())
-                    modal_view.show_modal(modal_selected)
+                    # Partial refresh for modal radio buttons
+                    modal_view.partial_refresh_radio_buttons(len(modal_view.get_options()), modal_selected)
                 if sw_state == 0 and last_sw_state == 1:
                     option = modal_view.get_options()[modal_selected]
                     print(f"[MODAL] Selected: {option}")
@@ -167,12 +168,19 @@ def main():
                     elif option == "Back to Library":
                         in_reader = False
                         in_toc = False
-                        render_library_view()
+                        display.init_display()         # Ensure full update mode and clear framebuffer
+                        render_library_view()          # Redraw the full library view
+                        # Do NOT call display.init_display() again after this, as it would clear the library view
+                        in_modal = False
+                        modal_selected = 0
+                        continue  # Skip the rest of the modal close logic for this case
                     # Cancel or after any action, close modal
                     in_modal = False
                     modal_selected = 0
                     if in_reader and not in_toc:
                         reader_controller.show_page()
+                    # Restore full refresh mode after modal closes
+                    display.init_display()
                 last_clk_state = clk_state
                 last_sw_state = sw_state
                 time.sleep(0.01)

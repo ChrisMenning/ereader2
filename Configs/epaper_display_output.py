@@ -8,6 +8,7 @@ class EPaperDisplay:
         y_offset: index of the first visible item
         num_items: number of visible items (lines)
         selected_index: which item is selected (relative to y_offset)
+        Also update the main framebuffer so it stays in sync with the display.
         """
         from Views.Components.radio_button import draw_radio_button
         THUMB_SIZE = 64
@@ -25,7 +26,8 @@ class EPaperDisplay:
         x1_aligned = ((x1 + 7) // 8) * 8
         region_width = x1_aligned - x0_aligned
         region_height = y1 - y0
-        # Create and draw the region
+
+        # Create and draw the region for partial refresh
         img = Image.new("1", (region_width, region_height), 255)
         draw = ImageDraw.Draw(img)
         for i in range(num_items):
@@ -38,6 +40,19 @@ class EPaperDisplay:
         buf = self.epd.getbuffer_region(rotated_img)
         self.epd.init_part()
         self.epd.display_Partial(buf, y0, x0_aligned, y1, x1_aligned)
+
+        # --- ALSO update the main framebuffer (self.fb) ---
+        # Draw the same radio buttons into the framebuffer
+        fb_draw = self.draw
+        for i in range(num_items):
+            y = y0 + (i * LINE_HEIGHT) + LINE_HEIGHT // 2
+            selected = (i == selected_index)
+            fb_draw.rectangle(
+                [(radio_x - radio_radius - 4, y - radio_radius - 4),
+                 (radio_x + radio_radius + 4, y + radio_radius + 4)],
+                fill=255
+            )
+            draw_radio_button(fb_draw, (radio_x, y), radio_radius, selected)
 
     def __init__(self):
         self.epd = epd7in5_V2.EPD()
